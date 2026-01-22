@@ -1,7 +1,14 @@
+import CreateInterview from "./_components/CreateInterview";
+import LatestInterviewsList from "./_components/LatestInterviewsList";
+import WelcomeContainer from "./_components/WelcomeContainer";
+
 function Dashboard() {
   return (
     <div>
-      <h2 className="my-3 font-bold text-2xl">Dashboard</h2>
+      <WelcomeContainer />
+      <h2 className="mt-6 mb-2 font-bold text-2xl">Dashboard</h2>
+      <CreateInterview />
+      <LatestInterviewsList />
     </div>
   );
 }
