@@ -13,6 +13,7 @@ function CreateInterview() {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState();
   const [interviewId, setInterviewId] = useState();
+  const [questionCount, setQuestionCount] = useState(0);
 
   const onHandleInputChange = (field, value) => {
     setFormData((prev) => ({
@@ -37,8 +38,9 @@ function CreateInterview() {
     setStep(step + 1);
   };
 
-  const onCreateLink = (interview_id) => {
+  const onCreateLink = (interview_id, questionCount) => {
     setInterviewId(interview_id);
+    setQuestionCount(questionCount);
     setStep(step + 1);
   };
 
@@ -62,12 +64,13 @@ function CreateInterview() {
           GoToNext={() => onGoToNext()}
         />
       ) : step == 2 ? (
-        <QuestionList
-          formData={formData}
-          onCreateLink={(interview_id) => onCreateLink(interview_id)}
-        />
+        <QuestionList formData={formData} onCreateLink={onCreateLink} />
       ) : step == 3 ? (
-        <InterviewLink interview_id={interviewId} formData={formData} />
+        <InterviewLink
+          interview_id={interviewId}
+          formData={formData}
+          questionCount={questionCount}
+        />
       ) : null}
     </div>
   );
