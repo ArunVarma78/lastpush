@@ -18,9 +18,9 @@ export const SideBarOptions = [
     path: "/dashboard",
   },
   {
-    name: "Schedule Interview",
+    name: "Scheduled Interview",
     icon: Calendar,
-    path: "/schedule-interview",
+    path: "/scheduled-interview",
   },
   {
     name: "All Interview",

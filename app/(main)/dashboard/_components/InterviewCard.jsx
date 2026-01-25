@@ -39,6 +39,11 @@ function InterviewCard({ interview, viewDetail = false }) {
 
       <h2 className="mt-2 flex justify-between text-gray-500">
         {interview?.questionList?.length} Questions • {interview?.duration}
+        {viewDetail && (
+          <span className="text-green-700">
+            {interview["interview-feedback"]?.length} Candidates
+          </span>
+        )}
       </h2>
 
       {!viewDetail ? (
