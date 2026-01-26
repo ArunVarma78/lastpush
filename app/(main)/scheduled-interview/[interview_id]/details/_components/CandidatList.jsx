@@ -1,3 +1,5 @@
+import CandidateFeedbackDialog from "./CandidateFeedbackDialog";
+
 const formatDate = (dateString) => {
   if (!dateString) return "";
   return new Date(dateString).toLocaleDateString("en-IN", {
@@ -43,9 +45,7 @@ function CandidateList({ candidateList }) {
             </div>
 
             <div className="mt-3 sm:mt-0">
-              <span className="px-3 py-1 bg-green-100 text-green-800 font-semibold rounded-full text-sm">
-                {candidate.score ?? "6/10"}
-              </span>
+              <CandidateFeedbackDialog candidate={candidate} />
             </div>
           </div>
         ))}
