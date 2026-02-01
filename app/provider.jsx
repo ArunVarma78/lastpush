@@ -10,33 +10,47 @@ function Provider({ children }) {
     CreateNewUser();
   }, []);
 
-  const CreateNewUser = () => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      //check if user already exist
-      let { data: Users, error } = await supabase
+  const CreateNewUser = async () => {
+    try {
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+
+      // Check if user already exists
+      const { data: Users, error: fetchError } = await supabase
         .from("Users")
         .select("*")
-        .eq("email", user?.email);
+        .eq("email", authUser?.email);
 
-      console.log(Users);
+      if (fetchError) {
+        console.error("Error fetching user:", fetchError);
+        return;
+      }
 
-      //If not then create new user
-      if (Users?.length == 0) {
-        const { data, error } = await supabase.from("Users").insert([
-          {
-            name: user?.user_metadata?.name,
-            email: user?.email,
-            picture: user?.user_metadata?.picture,
-          },
-        ]);
+      // If not, create new user
+      if (Users?.length === 0) {
+        const { data: newUser, error: insertError } = await supabase
+          .from("Users")
+          .insert([
+            {
+              name: authUser?.user_metadata?.name,
+              email: authUser?.email,
+              picture: authUser?.user_metadata?.picture,
+            },
+          ])
+          .select()
+          .single();
 
-        console.log(data);
+        if (insertError) {
+          console.error("Error creating user:", insertError);
+          return;
+        }
 
-        setUser(data);
+        setUser(newUser);
         return;
       }
       setUser(Users[0]);
-    });
+    } catch (error) {
+      console.error("Unexpected error in CreateNewUser:", error);
+    }
   };
 
   return (

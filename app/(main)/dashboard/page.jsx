@@ -4,8 +4,8 @@ import WelcomeContainer from "./_components/WelcomeContainer";
 
 function Dashboard() {
   return (
-    <div>
-      <h2 className="mt-6 mb-2 font-bold text-2xl">Dashboard</h2>
+    <div className="space-y-6">
+      <WelcomeContainer />
       <CreateInterview />
       <LatestInterviewsList />
     </div>

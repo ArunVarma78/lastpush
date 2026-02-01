@@ -1,7 +1,7 @@
 "use client";
 import { useContext, useEffect, useState } from "react";
 import Image from "next/image";
-import { Clock, Info, Loader2Icon, Video } from "lucide-react";
+import { Clock, Info, Loader2Icon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,110 +23,226 @@ function Interview() {
     interview_id && GetInterviewDetails();
   }, [interview_id]);
 
+  const [errors, setErrors] = useState({});
+
+  const validateEmail = (email) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
+
   const GetInterviewDetails = async () => {
     setLoading(true);
     try {
-      let { data: Interviews, error } = await supabase
+      const { data: Interviews, error } = await supabase
         .from("Interviews")
         .select("jobPosition, jobDescription, duration, type, questionList")
         .eq("interview_id", interview_id);
 
-      setInterviewData(Interviews[0]);
-      if (Interviews?.length == 0) {
-        toast("Incorrect Interview Link");
+      if (error) {
+        throw error;
+      }
+
+      if (!Interviews || Interviews.length === 0) {
+        toast.error("Interview not found. Please check the link.");
+        router.push("/");
         return;
       }
-    } catch (e) {
-      toast("Incorrect Interview Link");
+
+      setInterviewData(Interviews[0]);
+    } catch (error) {
+      console.error("Error fetching interview:", error);
+      toast.error("Failed to load interview. Please try again.");
+      router.push("/");
     } finally {
       setLoading(false);
     }
   };
 
   const onJoinInterview = async () => {
+    // Validate inputs
+    const newErrors = {};
+    if (!userName || userName.trim().length < 2) {
+      newErrors.userName = "Name must be at least 2 characters";
+    }
+    if (!userEmail || !validateEmail(userEmail)) {
+      newErrors.userEmail = "Please enter a valid email address";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
     setLoading(true);
+    try {
+      const { data: Interviews, error } = await supabase
+        .from("Interviews")
+        .select("*")
+        .eq("interview_id", interview_id);
 
-    let { data: Interviews, error } = await supabase
-      .from("Interviews")
-      .select("*")
-      .eq("interview_id", interview_id);
+      if (error) {
+        throw error;
+      }
 
-    console.log(Interviews[0]);
-    setInterviewInfo({
-      userName: userName,
-      userEmail: userEmail,
-      interviewData: Interviews[0],
-    });
-    router.push("/interview/" + interview_id + "/start");
-    setLoading(false);
+      if (!Interviews || Interviews.length === 0) {
+        toast.error("Interview not found");
+        return;
+      }
+
+      setInterviewInfo({
+        userName: userName.trim(),
+        userEmail: userEmail.trim().toLowerCase(),
+        interviewData: Interviews[0],
+      });
+      router.push("/interview/" + interview_id + "/start");
+    } catch (error) {
+      console.error("Error joining interview:", error);
+      toast.error("Failed to join interview. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  if (loading && !interviewData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2Icon className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading interview details...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="px-4 sm:px-10 mt-7 pb-20">
-      <div className="flex flex-col items-center justify-center border rounded-lg bg-white p-7 mx-auto max-w-2xl">
-        <Image
-          src={"/logo.jpeg"}
-          alt="logo"
-          width={100}
-          height={100}
-          className="w-35"
-        />
-        <h2 className="text-gray-500 mt-3">AI-Powered Interview Platform</h2>
-
-        <Image
-          src={"/interview.jpg"}
-          alt="interview"
-          width={500}
-          height={500}
-          className="w-70 my-6"
-        />
-
-        <h2 className="font-bold text-xl">{interviewData?.jobPosition}</h2>
-        <h2 className="flex gap-2 items-center text-gray-500 my-3">
-          <Clock className="h-4 w-4" />
-          Duration: {interviewData?.duration}
-        </h2>
-
-        <div className="flex items-center gap-4 w-full mb-5">
-          <label className="font-medium">Name: </label>
-          <Input
-            className="flex-1"
-            placeholder="Enter you name"
-            onChange={(e) => setUserName(e.target.value)}
+    <div className="min-h-screen flex items-center justify-center py-8 px-4">
+      <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl border border-gray-200 p-6 md:p-10">
+        {/* Logo and Header */}
+        <div className="text-center mb-8">
+          <Image
+            src={"/logo.jpeg"}
+            alt="LastPush Logo"
+            width={150}
+            height={60}
+            className="mx-auto mb-4"
           />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            AI-Powered Interview
+          </h1>
+          <p className="text-gray-600">Get ready for your interview</p>
         </div>
 
-        <div className="flex items-center gap-4 w-full mb-5">
-          <label className="font-medium">Email: </label>
-          <Input
-            className="flex-1"
-            placeholder="Enter you email"
-            onChange={(e) => setUserEmail(e.target.value)}
-          />
-        </div>
+        {/* Interview Details */}
+        {interviewData && (
+          <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+            <h2 className="text-xl font-bold text-gray-900 mb-3">
+              {interviewData.jobPosition}
+            </h2>
+            <div className="flex items-center gap-2 text-gray-600">
+              <Clock className="h-5 w-5" />
+              <span className="font-medium">Duration: {interviewData.duration}</span>
+            </div>
+            {interviewData.type && interviewData.type.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {interviewData.type.map((type, index) => (
+                  <span
+                    key={index}
+                    className="px-3 py-1 bg-white text-blue-700 rounded-full text-sm font-medium"
+                  >
+                    {type}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-        <div className="p-4 bg-blue-100 rounded-lg flex flex-col gap-2">
-          {/* Header */}
-          <div className="flex items-center gap-2">
-            <Info className="text-primary h-5 w-5" />
-            <h2 className="font-bold text-primary">Before you begin</h2>
+        {/* Form */}
+        <div className="space-y-5">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Full Name <span className="text-red-500">*</span>
+            </label>
+            <Input
+              className={errors.userName ? "border-red-500" : ""}
+              placeholder="Enter your full name"
+              value={userName || ""}
+              onChange={(e) => {
+                setUserName(e.target.value);
+                if (errors.userName) {
+                  setErrors((prev) => ({ ...prev, userName: "" }));
+                }
+              }}
+              maxLength={100}
+            />
+            {errors.userName && (
+              <p className="text-red-500 text-xs mt-1">{errors.userName}</p>
+            )}
           </div>
 
-          {/* List */}
-          <ul className="list-disc list-inside text-sm text-primary space-y-1">
-            <li>Test your camera and microphone</li>
-            <li>Ensure you have a stable internet connection</li>
-            <li>Find a quiet place for the interview</li>
-          </ul>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Email Address <span className="text-red-500">*</span>
+            </label>
+            <Input
+              type="email"
+              className={errors.userEmail ? "border-red-500" : ""}
+              placeholder="Enter your email address"
+              value={userEmail || ""}
+              onChange={(e) => {
+                setUserEmail(e.target.value);
+                if (errors.userEmail) {
+                  setErrors((prev) => ({ ...prev, userEmail: "" }));
+                }
+              }}
+              maxLength={255}
+            />
+            {errors.userEmail && (
+              <p className="text-red-500 text-xs mt-1">{errors.userEmail}</p>
+            )}
+          </div>
         </div>
 
+        {/* Info Box */}
+        <div className="mt-6 p-5 bg-blue-50 border-2 border-blue-200 rounded-xl">
+          <div className="flex items-start gap-3">
+            <Info className="text-blue-600 h-5 w-5 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-bold text-blue-900 mb-2">Before you begin</h3>
+              <ul className="space-y-1.5 text-sm text-blue-800">
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600 mt-1">•</span>
+                  <span>Test your camera and microphone</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600 mt-1">•</span>
+                  <span>Ensure you have a stable internet connection</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600 mt-1">•</span>
+                  <span>Find a quiet place for the interview</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Join Button */}
         <Button
-          className={"mt-5 w-full font-bold"}
+          className="mt-6 w-full h-12 text-lg font-semibold"
           disabled={loading || !userName || !userEmail}
-          onClick={() => onJoinInterview()}
+          onClick={onJoinInterview}
         >
-          <Video />
-          {loading && <Loader2Icon />} Join Interview
+          {loading ? (
+            <>
+              <Loader2Icon className="mr-2 h-5 w-5 animate-spin" />
+              Joining...
+            </>
+          ) : (
+            <>
+              Join Interview
+            </>
+          )}
         </Button>
       </div>
     </div>

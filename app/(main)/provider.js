@@ -8,7 +8,6 @@ function DashboardProvider({ children }) {
       <AppSidebar />
 
       <div className="w-full p-10">
-        <WelcomeContainer />
         {children}
       </div>
     </SidebarProvider>
