@@ -1,18 +1,20 @@
 "use client";
-import { useEffect, useState } from "react";
-import {  useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CheckCircle2, PhoneOff } from "lucide-react";
 import Image from "next/image";
 
-function CompletedInterview() {
+function CompletedInterviewContent() {
   const searchParams = useSearchParams();
   const [isTerminated, setIsTerminated] = useState(false);
+  const [terminatedByProctoring, setTerminatedByProctoring] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if interview was terminated
     const terminated = searchParams.get("terminated") === "true";
+    const proctoring = searchParams.get("proctoring") === "1";
     setIsTerminated(terminated);
+    setTerminatedByProctoring(terminated && proctoring);
     setLoading(false);
   }, [searchParams]);
 
@@ -53,15 +55,32 @@ function CompletedInterview() {
           </h1>
           <p className="text-gray-600">
             {isTerminated
-              ? "You ended the interview before completion"
+              ? terminatedByProctoring
+                ? "The interview was ended due to proctoring violations"
+                : "You ended the interview before completion"
               : "Thank you for participating in the interview"}
           </p>
         </div>
 
         {/* Message Section */}
-        <div className="bg-blue-50 rounded-xl p-6 border-2 border-blue-200">
+        <div
+          className={
+            terminatedByProctoring
+              ? "bg-amber-50 rounded-xl p-6 border-2 border-amber-200"
+              : "bg-blue-50 rounded-xl p-6 border-2 border-blue-200"
+          }
+        >
           <div className="text-center space-y-4">
-            {isTerminated ? (
+            {terminatedByProctoring ? (
+              <>
+                <p className="text-gray-700 text-lg font-semibold">
+                  You exceeded the allowed proctoring violations (3 chances). The interview has been terminated.
+                </p>
+                <p className="text-gray-600">
+                  The recruiter has been notified. If you have questions, please contact the recruiter.
+                </p>
+              </>
+            ) : isTerminated ? (
               <>
                 <p className="text-gray-700 text-lg">
                   Your interview has been terminated. The recruiter has been notified.
@@ -98,4 +117,18 @@ function CompletedInterview() {
   );
 }
 
-export default CompletedInterview;
+function CompletedInterviewFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+    </div>
+  );
+}
+
+export default function CompletedInterview() {
+  return (
+    <Suspense fallback={<CompletedInterviewFallback />}>
+      <CompletedInterviewContent />
+    </Suspense>
+  );
+}

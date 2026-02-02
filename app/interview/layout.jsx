@@ -1,6 +1,5 @@
 "use client";
 import { useState } from "react";
-import InterviewHeader from "./_components/InterviewHeader";
 import { InterviewDataContext } from "@/context/InterviewDataContext";
 
 function InterviewLayout({ children }) {
@@ -9,7 +8,6 @@ function InterviewLayout({ children }) {
   return (
     <InterviewDataContext.Provider value={{ interviewInfo, setInterviewInfo }}>
       <div className="bg-secondary">
-        <InterviewHeader />
         {children}
       </div>
     </InterviewDataContext.Provider>

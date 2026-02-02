@@ -20,7 +20,7 @@ function InterviewDetail() {
       .from("Interviews")
       .select(
         `jobPosition, jobDescription, type, questionList, duration,
-        interview_id, created_at, interview-feedback(userEmail, userName, feedback, created_at)`,
+        interview_id, created_at, interview-feedback(userEmail, userName, feedback, proctoring_summary, terminated_by, terminated_at, created_at)`,
       )
       .eq("userEmail", user?.email)
       .eq("interview_id", interview_id);

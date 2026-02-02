@@ -1,7 +1,7 @@
 "use client";
 import { useContext, useEffect, useState } from "react";
 import Image from "next/image";
-import { Clock, Info, Loader2Icon } from "lucide-react";
+import { Clock, Info, Loader2Icon, Shield, Monitor, MousePointer, Copy, Keyboard } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,19 @@ function Interview() {
   useEffect(() => {
     interview_id && GetInterviewDetails();
   }, [interview_id]);
+
+  // Request fullscreen when user lands on the interview page
+  useEffect(() => {
+    const enterFullscreen = () => {
+      try {
+        const doc = document.documentElement;
+        if (doc.requestFullscreen) {
+          doc.requestFullscreen().catch(() => {});
+        }
+      } catch (_) {}
+    };
+    enterFullscreen();
+  }, []);
 
   const [errors, setErrors] = useState({});
 
@@ -156,6 +169,44 @@ function Interview() {
             )}
           </div>
         )}
+
+        {/* Proctoring rules – show before user fills data so they don't make mistakes */}
+        <div className="mb-8 p-6 bg-amber-50 border-2 border-amber-200 rounded-xl">
+          <div className="flex items-start gap-3 mb-4">
+            <Shield className="text-amber-600 h-6 w-6 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-bold text-amber-900 text-lg">Proctoring rules – please read</h3>
+              <p className="text-sm text-amber-800 mt-1">
+                Each violation counts as <strong>1 strike</strong>. After <strong>3 strikes</strong> the interview will be terminated automatically.
+              </p>
+            </div>
+          </div>
+          <ul className="space-y-3 text-sm text-amber-900">
+            <li className="flex items-start gap-2">
+              <Monitor className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <span><strong>Stay in fullscreen</strong> – Do not exit fullscreen.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Monitor className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <span><strong>Stay on this tab</strong> – Do not switch tabs or windows.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Copy className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <span><strong>No copy/paste</strong> – Do not use copy, paste, or cut.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Keyboard className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <span><strong>No shortcut keys</strong> – Do not use Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+A.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <MousePointer className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <span><strong>No right-click</strong> – Do not use the right-click menu.</span>
+            </li>
+          </ul>
+          <p className="mt-4 text-amber-800 font-medium text-sm">
+            Please follow these rules to avoid disqualification.
+          </p>
+        </div>
 
         {/* Form */}
         <div className="space-y-5">

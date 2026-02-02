@@ -4,23 +4,33 @@ import Vapi from "@vapi-ai/web";
 import Image from "next/image";
 import { toast } from "sonner";
 import { useParams, useRouter } from "next/navigation";
-import { Phone, Timer } from "lucide-react";
+import { Phone, Timer, Shield, AlertTriangle } from "lucide-react";
 import { useContext, useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/services/supabaseClient";
 import AlertConfirmation from "./_components/AlertConfirmation";
 import { InterviewDataContext } from "@/context/InterviewDataContext";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { useProctoring } from "@/hooks/useProctoring";
 
 const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY);
 
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext);
+  const { startProctoring, stopProctoring, flushEvents } = useProctoring();
 
   const [activeUser, setActiveUser] = useState(false);
   const [conversation, setConversation] = useState();
   const [timer, setTimer] = useState(0);
   const [isInterviewActive, setIsInterviewActive] = useState(false);
   const [error, setError] = useState(null);
+  const [proctoringWarningMessage, setProctoringWarningMessage] = useState(null);
   const questionCountRef = useRef(0);
   const totalQuestionsRef = useRef(0);
   const autoEndTimeoutRef = useRef(null);
@@ -33,6 +43,22 @@ function StartInterview() {
   const feedbackGeneratedRef = useRef(false);
   const conversationRef = useRef(null);
   const handleCallEndRef = useRef(null);
+  const violationCountRef = useRef(0);
+  const proctoringTerminatedRef = useRef(false);
+  const PROCTORING_MAX_CHANCES = 3;
+
+  // Request fullscreen when user lands on the interview start page
+  useEffect(() => {
+    const enterFullscreen = () => {
+      try {
+        const doc = document.documentElement;
+        if (doc.requestFullscreen) {
+          doc.requestFullscreen().catch(() => {});
+        }
+      } catch (_) {}
+    };
+    enterFullscreen();
+  }, []);
 
   const startCall = useCallback(() => {
     console.log("startCall called", {
@@ -354,6 +380,58 @@ Key Guidelines:
     const handleCallStart = () => {
       toast.success("Call Connected");
       setIsInterviewActive(true);
+      violationCountRef.current = 0;
+      proctoringTerminatedRef.current = false;
+      // Start proctoring (tab switch, visibility, copy/paste, fullscreen, context menu) – 3 chances then terminate
+      startProctoring({
+        interview_id,
+        user_email: interviewInfo?.userEmail,
+        user_name: interviewInfo?.userName,
+        onViolation: (eventType) => {
+          // 1 strike per violation. Only "returned to tab" does not count as a strike.
+          const countsAsStrike = eventType !== "visibility_visible";
+          if (countsAsStrike) {
+            violationCountRef.current += 1;
+          }
+          const count = violationCountRef.current;
+
+          const messages = {
+            visibility_hidden: "You left the tab. This counts as 1 strike. Stay on this tab for the duration of the interview.",
+            visibility_visible: "You returned to the tab. Please stay on this tab for the duration of the interview.",
+            fullscreen_exit: "Fullscreen was turned off. This counts as 1 strike. Please remain in fullscreen for the entire interview.",
+            copy_attempt: "Copy/paste is not allowed. This counts as 1 strike. Do not copy, paste, or cut during the interview.",
+            paste_attempt: "Copy/paste is not allowed. This counts as 1 strike. Do not copy, paste, or cut during the interview.",
+            context_menu: "Right-click is not allowed. This counts as 1 strike. Do not use the right-click menu during the interview.",
+            keyboard_cheat: "Copy/paste shortcuts (Ctrl+C, Ctrl+V, etc.) are not allowed. This counts as 1 strike.",
+          };
+          const baseMsg = messages[eventType] || "This action is not allowed and counts as 1 strike. Please follow the interview rules.";
+
+          if (countsAsStrike && count >= PROCTORING_MAX_CHANCES) {
+            setProctoringWarningMessage(
+              "You have reached 3 strikes. The interview is being terminated."
+            );
+            proctoringTerminatedRef.current = true;
+            setTimeout(() => {
+              try {
+                vapi?.stop();
+              } catch (e) {
+                console.error("Error stopping call for proctoring:", e);
+              }
+            }, 800);
+          } else {
+            const msg = countsAsStrike
+              ? `${baseMsg} You have ${PROCTORING_MAX_CHANCES - count} strike(s) remaining before termination.`
+              : baseMsg;
+            setProctoringWarningMessage(msg);
+          }
+        },
+      });
+      // Optional: request fullscreen for better proctoring (user can deny)
+      try {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      } catch (_) {}
     };
 
     const handleSpeechStart = () => {
@@ -367,12 +445,20 @@ Key Guidelines:
     };
 
     const handleCallEnd = async (userTerminated = false) => {
-      if (userTerminated) {
-        toast.warning("Interview Terminated");
+      const terminatedDueToProctoring = proctoringTerminatedRef.current;
+      if (terminatedDueToProctoring) proctoringTerminatedRef.current = false;
+      const effectiveTerminated = userTerminated || terminatedDueToProctoring;
+
+      if (effectiveTerminated) {
+        if (terminatedDueToProctoring) {
+          toast.error("Interview terminated due to proctoring violations");
+        } else {
+          toast.warning("Interview Terminated");
+        }
       } else {
         toast.success("Interview Ended");
       }
-      
+
       setIsInterviewActive(false);
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
@@ -380,20 +466,38 @@ Key Guidelines:
       if (autoEndTimeoutRef.current) {
         clearTimeout(autoEndTimeoutRef.current);
       }
-      
+
+      // Flush proctoring events to DB and get summary for this attempt
+      let proctoringSummary = null;
+      try {
+        proctoringSummary = await flushEvents();
+      } catch (e) {
+        console.error("Proctoring flush error:", e);
+      }
+      stopProctoring();
+
+      // Exit fullscreen if active
+      try {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      } catch (_) {}
+
       // Only process once
       if (!feedbackGeneratedRef.current) {
         feedbackGeneratedRef.current = true;
-        
+
         // Use ref to get latest conversation
         const convData = conversationRef.current || conversation;
-        
+
         let savedRecord = false;
         let feedbackData = null;
 
-        // If user terminated early, save minimal data
-        if (userTerminated) {
+        // If user terminated early or terminated due to proctoring, save minimal data (separate columns; feedback null)
+        if (effectiveTerminated) {
           try {
+            const terminatedByValue = terminatedDueToProctoring ? "proctoring" : "candidate";
+
             const { error: dbError } = await supabase
               .from("interview-feedback")
               .insert([
@@ -401,13 +505,11 @@ Key Guidelines:
                   userName: interviewInfo?.userName,
                   userEmail: interviewInfo?.userEmail,
                   interview_id: interview_id,
-                  feedback: {
-                    status: "terminated",
-                    message: "Interview was terminated by candidate before completion",
-                    terminatedBy: "candidate",
-                    duration: timer,
-                  },
+                  feedback: null,
                   recommended: false,
+                  proctoring_summary: proctoringSummary,
+                  terminated_by: terminatedByValue,
+                  terminated_at: new Date().toISOString(),
                 },
               ]);
 
@@ -420,9 +522,13 @@ Key Guidelines:
           } catch (error) {
             console.error("Error saving terminated interview:", error);
           }
-          
+
           // Navigate to completed page without feedback
-          router.replace("/interview/completed?terminated=true");
+          router.replace(
+            terminatedDueToProctoring
+              ? "/interview/completed?terminated=true&proctoring=1"
+              : "/interview/completed?terminated=true"
+          );
           return;
         }
 
@@ -438,6 +544,7 @@ Key Guidelines:
                   interview_id: interview_id,
                   feedback: null, // Will be updated after feedback generation
                   recommended: false,
+                  proctoring_summary: proctoringSummary,
                 },
               ])
               .select()
@@ -457,7 +564,7 @@ Key Guidelines:
         // Step 2: Generate feedback (but don't fail if this doesn't work)
         if (convData) {
           try {
-            toast.loading("Generating feedback...", { id: "feedback" });
+            toast.loading("Submitting your interview...", { id: "feedback" });
             
             const result = await axios.post("/api/ai-feedback", {
               conversation: convData,
@@ -494,6 +601,7 @@ Key Guidelines:
                   .update({
                     feedback: feedbackData,
                     recommended: feedbackData?.feedback?.recommendation === "Yes",
+                    proctoring_summary: proctoringSummary,
                   })
                   .eq("interview_id", interview_id)
                   .eq("userEmail", interviewInfo?.userEmail);
@@ -512,6 +620,7 @@ Key Guidelines:
                       interview_id: interview_id,
                       feedback: feedbackData,
                       recommended: feedbackData?.feedback?.recommendation === "Yes",
+                      proctoring_summary: proctoringSummary,
                     },
                   ]);
 
@@ -521,7 +630,7 @@ Key Guidelines:
               }
 
               toast.dismiss("feedback");
-              toast.success("Feedback generated successfully");
+              toast.success("Thank you for completing the interview. Your responses have been submitted and the recruiter will review them shortly.");
             } else {
               throw new Error("Invalid response from feedback API");
             }
@@ -530,9 +639,9 @@ Key Guidelines:
             toast.dismiss("feedback");
             // Don't show error if record was saved - just proceed
             if (savedRecord) {
-              toast.info("Feedback generation had issues, but interview was recorded");
+              toast.success("Your interview has been submitted. The recruiter will review your responses.");
             } else {
-              toast.warning("Some issues occurred, but proceeding...");
+              toast.warning("Something went wrong. Please try again or contact support.");
             }
           }
         } else {
@@ -573,6 +682,7 @@ Key Guidelines:
 
     // Cleanup function
     return () => {
+      stopProctoring();
       if (vapi && eventHandlersRef.current) {
         Object.entries(eventHandlersRef.current).forEach(([event, handler]) => {
           if (event !== "registered" && typeof handler === "function") {
@@ -614,6 +724,36 @@ Key Guidelines:
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 md:p-8 lg:p-12">
+      {/* Proctoring warning dialog – big centered message */}
+      <Dialog
+        open={!!proctoringWarningMessage}
+        onOpenChange={(open) => !open && setProctoringWarningMessage(null)}
+      >
+        <DialogContent className="sm:max-w-md max-w-[95vw] text-center p-8" showCloseButton={false}>
+          <DialogHeader>
+            <div className="flex justify-center mb-4">
+              <div className="rounded-full bg-amber-100 p-4">
+                <AlertTriangle className="h-14 w-14 text-amber-600" />
+              </div>
+            </div>
+            <DialogTitle className="text-xl sm:text-2xl font-bold text-amber-900">
+              Proctoring Notice
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-base sm:text-lg text-gray-700 leading-relaxed py-4">
+            {proctoringWarningMessage}
+          </p>
+          <DialogFooter className="flex justify-center sm:justify-center pt-4">
+            <Button
+              onClick={() => setProctoringWarningMessage(null)}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-8"
+            >
+              I understand
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
@@ -621,11 +761,19 @@ Key Guidelines:
             <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
               AI Interview Session
             </h2>
-            <div className="flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full">
-              <Timer className="h-5 w-5 text-blue-600" />
-              <span className="text-lg font-mono font-semibold text-gray-800">
-                {formatTime(timer)}
-              </span>
+            <div className="flex flex-wrap items-center gap-3">
+              {isInterviewActive && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-full text-sm font-medium">
+                  <Shield className="h-4 w-4" />
+                  Proctoring active
+                </div>
+              )}
+              <div className="flex items-center gap-2 bg-gradient-to-r from-blue-100 to-purple-100 px-4 py-2 rounded-full">
+                <Timer className="h-5 w-5 text-blue-600" />
+                <span className="text-lg font-mono font-semibold text-gray-800">
+                  {formatTime(timer)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -685,9 +833,9 @@ Key Guidelines:
           </div>
         </div>
 
-        {/* Controls */}
+        {/* Controls: End Call always; Start only when call is not active */}
         <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center gap-4">
             <AlertConfirmation stopInterview={stopInterview}>
               <button
                 className="h-16 w-16 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all flex items-center justify-center"
@@ -696,16 +844,16 @@ Key Guidelines:
                 <Phone className="h-7 w-7" />
               </button>
             </AlertConfirmation>
-          </div>
 
-          <div className="text-center mt-4">
             <p className="text-sm text-gray-500">
               {isInterviewActive
                 ? "Interview in Progress..."
                 : interviewInfo
-                ? "Preparing interview..."
-                : "Waiting for interview details..."}
+                  ? "Preparing interview..."
+                  : "Waiting for interview details..."}
             </p>
+
+            {/* Start / Retry only when call is NOT active */}
             {!isInterviewActive && !error && interviewInfo && (
               <Button
                 onClick={() => {
@@ -714,12 +862,12 @@ Key Guidelines:
                     startCall();
                   }
                 }}
-                className="mt-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
                 Start Interview
               </Button>
             )}
-            {error && (
+            {!isInterviewActive && error && (
               <Button
                 onClick={() => {
                   vapiStartedRef.current = false;
@@ -727,7 +875,7 @@ Key Guidelines:
                   setError(null);
                   startCall();
                 }}
-                className="mt-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
                 Retry Starting Interview
               </Button>
